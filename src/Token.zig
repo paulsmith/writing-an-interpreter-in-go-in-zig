@@ -5,16 +5,34 @@ pub const Type = enum {
     eof,
     ident,
     int,
+
+    // operators
     assign,
     plus,
+    minus,
+    bang,
+    asterisk,
+    slash,
+    lt,
+    gt,
+    eq,
+    not_eq,
+
     comma,
     semicolon,
     lparen,
     rparen,
     lbrace,
     rbrace,
+
+    // keywords
     function,
     let,
+    @"if",
+    @"else",
+    @"return",
+    true,
+    false,
 
     fn name(self: Type) []const u8 {
         return switch (self) {
@@ -24,6 +42,14 @@ pub const Type = enum {
             .int => "INT",
             .assign => "=",
             .plus => "+",
+            .minus => "-",
+            .bang => "!",
+            .asterisk => "*",
+            .slash => "/",
+            .lt => "<",
+            .gt => ">",
+            .eq => "==",
+            .not_eq => "!=",
             .comma => ",",
             .semicolon => ";",
             .lparen => "(",
@@ -32,6 +58,11 @@ pub const Type = enum {
             .rbrace => "}",
             .function => "FUNCTION",
             .let => "LET",
+            .@"if" => "IF",
+            .@"else" => "ELSE",
+            .@"return" => "RETURN",
+            .true => "TRUE",
+            .false => "FALSE",
         };
     }
 };
@@ -42,6 +73,11 @@ literal: []const u8,
 const keywords = std.StaticStringMap(Type).initComptime([_]struct { []const u8, Type }{
     .{ "let", .let },
     .{ "fn", .function },
+    .{ "if", .@"if" },
+    .{ "else", .@"else" },
+    .{ "return", .@"return" },
+    .{ "true", .true },
+    .{ "false", .false },
 });
 
 pub fn lookupIdent(ident: []const u8) Type {

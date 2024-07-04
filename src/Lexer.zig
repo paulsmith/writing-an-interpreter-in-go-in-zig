@@ -29,14 +29,32 @@ fn newToken(token_type: Token.Type, literal: []const u8) Token {
 pub fn next(self: *Self) Token {
     self.skipWhitespace();
     const token = switch (self.ch) {
-        '=' => newToken(.assign, "="),
+        '=' => blk: {
+            if (self.peekChar() == '=') {
+                self.readChar();
+                break :blk Token{ .token_type = .eq, .literal = "==" };
+            }
+            break :blk newToken(.assign, "=");
+        },
+        '+' => newToken(.plus, "+"),
+        '-' => newToken(.minus, "-"),
+        '!' => blk: {
+            if (self.peekChar() == '=') {
+                self.readChar();
+                break :blk Token{ .token_type = .not_eq, .literal = "!=" };
+            }
+            break :blk newToken(.bang, "!");
+        },
+        '/' => newToken(.slash, "/"),
+        '*' => newToken(.asterisk, "*"),
+        '<' => newToken(.lt, "<"),
+        '>' => newToken(.gt, ">"),
         ';' => newToken(.semicolon, ";"),
         '(' => newToken(.lparen, "("),
         ')' => newToken(.rparen, ")"),
         '{' => newToken(.lbrace, "{"),
         '}' => newToken(.rbrace, "}"),
         ',' => newToken(.comma, ","),
-        '+' => newToken(.plus, "+"),
         0 => newToken(.eof, ""),
         else => brk: {
             if (ascii.isAlphabetic(self.ch) or self.ch == '_') {
@@ -87,6 +105,13 @@ fn readChar(self: *Self) void {
     }
     self.position = self.readPosition;
     self.readPosition += 1;
+}
+
+fn peekChar(self: *Self) u8 {
+    if (self.readPosition >= self.input.len) {
+        return 0;
+    }
+    return self.input[self.readPosition];
 }
 
 const t = std.testing;
@@ -143,7 +168,7 @@ test "readChar" {
     try t.expectEqual(lexer.ch, 0);
 }
 
-test "lex Monkey source code" {
+test "next token" {
     const input =
         \\let five = 5;
         \\let ten = 10;
@@ -153,6 +178,17 @@ test "lex Monkey source code" {
         \\};
         \\
         \\let result = add(five, ten);
+        \\!-/*5;
+        \\5 < 10 > 5;
+        \\
+        \\if (5 < 10) {
+        \\    return true;
+        \\} else {
+        \\    return false;
+        \\}
+        \\
+        \\ 10 == 10;
+        \\ 10 != 9;
     ;
     const tokens = [_]Token{
         Token{ .token_type = .let, .literal = "let" },
@@ -190,6 +226,43 @@ test "lex Monkey source code" {
         Token{ .token_type = .comma, .literal = "," },
         Token{ .token_type = .ident, .literal = "ten" },
         Token{ .token_type = .rparen, .literal = ")" },
+        Token{ .token_type = .semicolon, .literal = ";" },
+        Token{ .token_type = .bang, .literal = "!" },
+        Token{ .token_type = .minus, .literal = "-" },
+        Token{ .token_type = .slash, .literal = "/" },
+        Token{ .token_type = .asterisk, .literal = "*" },
+        Token{ .token_type = .int, .literal = "5" },
+        Token{ .token_type = .semicolon, .literal = ";" },
+        Token{ .token_type = .int, .literal = "5" },
+        Token{ .token_type = .lt, .literal = "<" },
+        Token{ .token_type = .int, .literal = "10" },
+        Token{ .token_type = .gt, .literal = ">" },
+        Token{ .token_type = .int, .literal = "5" },
+        Token{ .token_type = .semicolon, .literal = ";" },
+        Token{ .token_type = .@"if", .literal = "if" },
+        Token{ .token_type = .lparen, .literal = "(" },
+        Token{ .token_type = .int, .literal = "5" },
+        Token{ .token_type = .lt, .literal = "<" },
+        Token{ .token_type = .int, .literal = "10" },
+        Token{ .token_type = .rparen, .literal = ")" },
+        Token{ .token_type = .lbrace, .literal = "{" },
+        Token{ .token_type = .@"return", .literal = "return" },
+        Token{ .token_type = .true, .literal = "true" },
+        Token{ .token_type = .semicolon, .literal = ";" },
+        Token{ .token_type = .rbrace, .literal = "}" },
+        Token{ .token_type = .@"else", .literal = "else" },
+        Token{ .token_type = .lbrace, .literal = "{" },
+        Token{ .token_type = .@"return", .literal = "return" },
+        Token{ .token_type = .false, .literal = "false" },
+        Token{ .token_type = .semicolon, .literal = ";" },
+        Token{ .token_type = .rbrace, .literal = "}" },
+        Token{ .token_type = .int, .literal = "10" },
+        Token{ .token_type = .eq, .literal = "==" },
+        Token{ .token_type = .int, .literal = "10" },
+        Token{ .token_type = .semicolon, .literal = ";" },
+        Token{ .token_type = .int, .literal = "10" },
+        Token{ .token_type = .not_eq, .literal = "!=" },
+        Token{ .token_type = .int, .literal = "9" },
         Token{ .token_type = .semicolon, .literal = ";" },
         Token{ .token_type = .eof, .literal = "" },
     };
