@@ -22,6 +22,13 @@ pub fn build(b: *std.Build) void {
         .optimize = optimize,
     });
 
+    const c_src = .{ .src_path = .{
+        .owner = b,
+        .sub_path = "c-src",
+    } };
+
+    exe.addIncludePath(c_src);
+
     // This declares intent for the executable to be installed into the
     // standard location when the user invokes the "install" step (the default
     // step when running `zig build`).
@@ -55,6 +62,8 @@ pub fn build(b: *std.Build) void {
         .target = target,
         .optimize = optimize,
     });
+
+    exe_unit_tests.addIncludePath(c_src);
 
     const run_exe_unit_tests = b.addRunArtifact(exe_unit_tests);
 

@@ -7,6 +7,11 @@
     let pkgs = nixpkgs.legacyPackages.aarch64-darwin;
     in {
       devShells.aarch64-darwin.default =
-        pkgs.mkShell { buildInputs = with pkgs; [ zig zls ]; };
+        pkgs.mkShell {
+            buildInputs = with pkgs; [ zig zls ];
+            shellHook = ''
+                echo "zig" "$(zig version)"
+            '';
+        };
     };
 }
