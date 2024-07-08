@@ -56,7 +56,7 @@ pub fn next(self: *Self) Token {
         '}' => newToken(.rbrace, "}"),
         ',' => newToken(.comma, ","),
         0 => newToken(.eof, ""),
-        else => brk: {
+        else => blk: {
             if (ascii.isAlphabetic(self.ch) or self.ch == '_') {
                 var token: Token = undefined;
                 token.literal = self.readIdentifier();
@@ -68,7 +68,7 @@ pub fn next(self: *Self) Token {
                 token.token_type = .int;
                 return token;
             }
-            break :brk newToken(.illegal, "");
+            break :blk newToken(.illegal, "");
         },
     };
     self.readChar();

@@ -7,7 +7,7 @@ timestamp=$(date +%Y-%m-%dT%H:%M)
 name=interp-${timestamp//:/_}.md
 cat > $name <<EOF
 ---
-title: "\"Writing an Interpreter in Go\"" in Zig, part XX
+title: "\"Writing an Interpreter in Go\" in Zig, part XX"
 date: $timestamp
 ---
 
