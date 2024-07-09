@@ -7,7 +7,7 @@ const lookupIdent = Token.lookupIdent;
 input: []const u8,
 position: usize, // current position in input (current char)
 readPosition: usize, // current reading position in input (after current char)
-ch: u8,
+ch: ?u8,
 
 const Self = @This();
 
@@ -16,7 +16,7 @@ pub fn init(input: []const u8) Self {
         .input = input,
         .position = 0,
         .readPosition = 0,
-        .ch = 0,
+        .ch = null,
     };
     lexer.readChar();
     return lexer;
@@ -28,62 +28,64 @@ fn newToken(token_type: Token.Type, literal: []const u8) Token {
 
 pub fn next(self: *Self) Token {
     self.skipWhitespace();
-    const token = switch (self.ch) {
-        '=' => blk: {
-            if (self.peekChar() == '=') {
-                self.readChar();
-                break :blk Token{ .token_type = .eq, .literal = "==" };
-            }
-            break :blk newToken(.assign, "=");
-        },
-        '+' => newToken(.plus, "+"),
-        '-' => newToken(.minus, "-"),
-        '!' => blk: {
-            if (self.peekChar() == '=') {
-                self.readChar();
-                break :blk Token{ .token_type = .not_eq, .literal = "!=" };
-            }
-            break :blk newToken(.bang, "!");
-        },
-        '/' => newToken(.slash, "/"),
-        '*' => newToken(.asterisk, "*"),
-        '<' => newToken(.lt, "<"),
-        '>' => newToken(.gt, ">"),
-        ';' => newToken(.semicolon, ";"),
-        '(' => newToken(.lparen, "("),
-        ')' => newToken(.rparen, ")"),
-        '{' => newToken(.lbrace, "{"),
-        '}' => newToken(.rbrace, "}"),
-        ',' => newToken(.comma, ","),
-        0 => newToken(.eof, ""),
-        else => blk: {
-            if (ascii.isAlphabetic(self.ch) or self.ch == '_') {
-                var token: Token = undefined;
-                token.literal = self.readIdentifier();
-                token.token_type = lookupIdent(token.literal);
-                return token;
-            } else if (ascii.isDigit(self.ch)) {
-                var token: Token = undefined;
-                token.literal = self.readNumber();
-                token.token_type = .int;
-                return token;
-            }
-            break :blk newToken(.illegal, "");
-        },
-    };
-    self.readChar();
-    return token;
+    if (self.ch) |ch| {
+        const token = switch (ch) {
+            '=' => blk: {
+                if (self.peekChar() == '=') {
+                    self.readChar();
+                    break :blk Token{ .token_type = .eq, .literal = "==" };
+                }
+                break :blk newToken(.assign, "=");
+            },
+            '+' => newToken(.plus, "+"),
+            '-' => newToken(.minus, "-"),
+            '!' => blk: {
+                if (self.peekChar() == '=') {
+                    self.readChar();
+                    break :blk Token{ .token_type = .not_eq, .literal = "!=" };
+                }
+                break :blk newToken(.bang, "!");
+            },
+            '/' => newToken(.slash, "/"),
+            '*' => newToken(.asterisk, "*"),
+            '<' => newToken(.lt, "<"),
+            '>' => newToken(.gt, ">"),
+            ';' => newToken(.semicolon, ";"),
+            '(' => newToken(.lparen, "("),
+            ')' => newToken(.rparen, ")"),
+            '{' => newToken(.lbrace, "{"),
+            '}' => newToken(.rbrace, "}"),
+            ',' => newToken(.comma, ","),
+            else => blk: {
+                if (ascii.isAlphabetic(ch) or ch == '_') {
+                    var token: Token = undefined;
+                    token.literal = self.readIdentifier();
+                    token.token_type = lookupIdent(token.literal);
+                    return token;
+                } else if (ascii.isDigit(ch)) {
+                    var token: Token = undefined;
+                    token.literal = self.readNumber();
+                    token.token_type = .int;
+                    return token;
+                }
+                break :blk newToken(.illegal, "");
+            },
+        };
+        self.readChar();
+        return token;
+    }
+    return newToken(.eof, "");
 }
 
 fn skipWhitespace(self: *Self) void {
-    while (ascii.isWhitespace(self.ch)) {
+    while (self.ch != null and ascii.isWhitespace(self.ch.?)) {
         self.readChar();
     }
 }
 
 fn readIdentifier(self: *Self) []const u8 {
     const p = self.position;
-    while (ascii.isAlphabetic(self.ch) or self.ch == '_') {
+    while (self.ch != null and ascii.isAlphabetic(self.ch.?) or self.ch.? == '_') {
         self.readChar();
     }
     return self.input[p..self.position];
@@ -91,7 +93,7 @@ fn readIdentifier(self: *Self) []const u8 {
 
 fn readNumber(self: *Self) []const u8 {
     const p = self.position;
-    while (ascii.isDigit(self.ch)) {
+    while (self.ch != null and ascii.isDigit(self.ch.?)) {
         self.readChar();
     }
     return self.input[p..self.position];
@@ -99,7 +101,7 @@ fn readNumber(self: *Self) []const u8 {
 
 fn readChar(self: *Self) void {
     if (self.readPosition >= self.input.len) {
-        self.ch = 0;
+        self.ch = null;
     } else {
         self.ch = self.input[self.readPosition];
     }
@@ -107,9 +109,9 @@ fn readChar(self: *Self) void {
     self.readPosition += 1;
 }
 
-fn peekChar(self: *Self) u8 {
+fn peekChar(self: *Self) ?u8 {
     if (self.readPosition >= self.input.len) {
-        return 0;
+        return null;
     }
     return self.input[self.readPosition];
 }
@@ -163,9 +165,9 @@ test "readChar" {
     lexer.readChar();
     try t.expectEqual(lexer.ch, 'd');
     lexer.readChar();
-    try t.expectEqual(lexer.ch, 0);
+    try t.expectEqual(lexer.ch, null);
     lexer.readChar();
-    try t.expectEqual(lexer.ch, 0);
+    try t.expectEqual(lexer.ch, null);
 }
 
 test "next token" {
