@@ -34,7 +34,7 @@ pub const Type = enum {
     true,
     false,
 
-    fn name(self: Type) []const u8 {
+    pub fn name(self: Type) []const u8 {
         return switch (self) {
             .illegal => "ILLEGAL",
             .eof => "EOF",
