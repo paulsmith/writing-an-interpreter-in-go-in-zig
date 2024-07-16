@@ -2,6 +2,13 @@ const std = @import("std");
 const assert = std.debug.assert;
 const Token = @import("Token.zig");
 
+const Expression = union(enum) {};
+
+const Statement = union(enum) {
+    program: *Program,
+    letStmt: *LetStatement,
+};
+
 const Node = struct {
     const Self = @This();
 
@@ -49,8 +56,8 @@ const Program = struct {
 
 const LetStatement = struct {
     token: Token,
-    //name: *Identifier,
-    //value: Expression,
+    name: *Identifier,
+    value: Expression,
 
     fn node(self: *LetStatement) Node {
         return Node.init(self);
@@ -61,11 +68,26 @@ const LetStatement = struct {
     }
 };
 
+const Identifier = struct {
+    token: Token,
+    value: []const u8,
+
+    fn node(self: Identifier) Node {
+        return Node.init(self);
+    }
+
+    fn tokenLit(self: *Identifier) []const u8 {
+        return self.token.literal;
+    }
+};
+
 test {
     const Lexer = @import("Lexer.zig");
     var lexer = Lexer.init("let foo = 5;");
-    const token = lexer.next();
-    var letStmt = LetStatement{ .token = token };
+    const tokLet = lexer.next();
+    const tokIdent = lexer.next();
+    var ident = Identifier{ .token = tokIdent, .value = tokIdent.literal };
+    var letStmt = LetStatement{ .token = tokLet, .name = &ident };
     var stmts = [_]Node{(&letStmt).node()};
     var prog = Program{ .statements = &stmts };
     try std.testing.expectEqualStrings((&prog).tokenLit(), "let");
