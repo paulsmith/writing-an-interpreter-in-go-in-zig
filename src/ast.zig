@@ -2,14 +2,21 @@ const std = @import("std");
 const assert = std.debug.assert;
 const Token = @import("Token.zig");
 
-const Expression = union(enum) {};
+pub const Expression = union(enum) {};
 
-const Statement = union(enum) {
+pub const Statement = union(enum) {
     program: *Program,
-    letStmt: *LetStatement,
+    let: *LetStatement,
+
+    pub fn node(self: Statement) Node {
+        return switch (self) {
+            .program => |s| s.node(),
+            .let => |s| s.node(),
+        };
+    }
 };
 
-const Node = struct {
+pub const Node = struct {
     const Self = @This();
 
     ptr: *anyopaque,
@@ -39,22 +46,22 @@ const Node = struct {
     }
 };
 
-const Program = struct {
-    statements: []Node,
+pub const Program = struct {
+    statements: []Statement,
 
     fn node(self: *Program) Node {
         return Node.init(self);
     }
 
-    fn tokenLit(self: *Program) []const u8 {
+    pub fn tokenLit(self: *Program) []const u8 {
         if (self.statements.len > 0) {
-            return self.statements[0].tokenLit();
+            return self.statements[0].node().tokenLit();
         }
         return "";
     }
 };
 
-const LetStatement = struct {
+pub const LetStatement = struct {
     token: Token,
     name: *Identifier,
     value: Expression,
@@ -63,12 +70,12 @@ const LetStatement = struct {
         return Node.init(self);
     }
 
-    fn tokenLit(self: *LetStatement) []const u8 {
+    pub fn tokenLit(self: *LetStatement) []const u8 {
         return self.token.literal;
     }
 };
 
-const Identifier = struct {
+pub const Identifier = struct {
     token: Token,
     value: []const u8,
 
@@ -76,7 +83,7 @@ const Identifier = struct {
         return Node.init(self);
     }
 
-    fn tokenLit(self: *Identifier) []const u8 {
+    pub fn tokenLit(self: *Identifier) []const u8 {
         return self.token.literal;
     }
 };
@@ -88,7 +95,7 @@ test {
     const tokIdent = lexer.next();
     var ident = Identifier{ .token = tokIdent, .value = tokIdent.literal };
     var letStmt = LetStatement{ .token = tokLet, .name = &ident, .value = undefined };
-    var stmts = [_]Node{(&letStmt).node()};
+    var stmts = [_]Statement{.{ .let = &letStmt }};
     var prog = Program{ .statements = &stmts };
     try std.testing.expectEqualStrings((&prog).tokenLit(), "let");
 }
