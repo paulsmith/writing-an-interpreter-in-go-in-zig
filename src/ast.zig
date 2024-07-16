@@ -87,7 +87,7 @@ test {
     const tokLet = lexer.next();
     const tokIdent = lexer.next();
     var ident = Identifier{ .token = tokIdent, .value = tokIdent.literal };
-    var letStmt = LetStatement{ .token = tokLet, .name = &ident };
+    var letStmt = LetStatement{ .token = tokLet, .name = &ident, .value = undefined };
     var stmts = [_]Node{(&letStmt).node()};
     var prog = Program{ .statements = &stmts };
     try std.testing.expectEqualStrings((&prog).tokenLit(), "let");
