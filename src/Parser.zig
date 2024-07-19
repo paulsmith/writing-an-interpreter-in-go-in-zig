@@ -3,17 +3,19 @@ const Allocator = std.mem.Allocator;
 const Lexer = @import("Lexer.zig");
 const Token = @import("Token.zig");
 const ast = @import("ast.zig");
+const assert = std.debug.assert;
 
 allocator: Allocator,
 lexer: *Lexer,
 cur_token: Token = undefined,
 peek_token: Token = undefined,
-error_list: std.ArrayList([]const u8) = undefined,
+error_list: [1024]u8 = undefined,
+error_list_ptr: usize = 0,
 
 const Self = @This();
 
 pub fn init(allocator: Allocator, lexer: *Lexer) Self {
-    var parser = Self{ .allocator = allocator, .lexer = lexer, .error_list = std.ArrayList([]const u8).init(allocator) };
+    var parser = Self{ .allocator = allocator, .lexer = lexer };
     (&parser).nextToken();
     (&parser).nextToken();
     return parser;
@@ -36,10 +38,12 @@ pub fn deinit(self: *Self, program: *ast.Program) void {
     }
     self.allocator.free(program.statements);
     self.allocator.destroy(program);
-    for (self.error_list.items) |msg| {
-        self.allocator.free(msg);
-    }
-    self.error_list.deinit();
+}
+
+fn fmtError(self: *Self, comptime fmt: []const u8, args: anytype) void {
+    assert(self.error_list_ptr < 1024);
+    const result = std.fmt.bufPrint(self.error_list[self.error_list_ptr..], fmt ++ "\n", args) catch unreachable;
+    self.error_list_ptr += result.len;
 }
 
 pub fn parseProgram(self: *Self) !*ast.Program {
@@ -126,18 +130,16 @@ fn expectPeek(self: *Self, t: Token.Type) bool {
         self.nextToken();
         return true;
     }
-    self.peekError(t) catch unreachable;
+    self.peekError(t);
     return false;
 }
 
 pub fn hasErrors(self: *Self) bool {
-    return self.error_list.items.len > 0;
+    return self.error_list_ptr > 0;
 }
 
-pub fn peekError(self: *Self, expected: Token.Type) !void {
-    const msg = try std.fmt.allocPrint(self.allocator, "next token: expected {s}, got {s}", .{ expected.name(), self.peek_token.token_type.name() });
-    errdefer self.allocator.free(msg);
-    try self.error_list.append(msg);
+pub fn peekError(self: *Self, expected: Token.Type) void {
+    self.fmtError("next token: expected {s}, got {s}", .{ expected.name(), self.peek_token.token_type.name() });
 }
 
 fn testLetStatement(stmt: *ast.LetStatement, name: []const u8) !void {
@@ -147,10 +149,7 @@ fn testLetStatement(stmt: *ast.LetStatement, name: []const u8) !void {
 
 fn checkParserErrors(parser: *Self) !void {
     if (parser.hasErrors()) {
-        std.debug.print("parser had {} errors\n", .{parser.error_list.items.len});
-        for (parser.error_list.items) |msg| {
-            std.debug.print("error: {s}\n", .{msg});
-        }
+        std.debug.print("error(s):\n{s}\n", .{parser.error_list});
         try std.testing.expect(false);
     }
 }
