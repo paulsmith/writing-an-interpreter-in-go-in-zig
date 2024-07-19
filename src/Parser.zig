@@ -33,6 +33,9 @@ pub fn deinit(self: *Self, program: *ast.Program) void {
                 self.allocator.destroy(s.name);
                 self.allocator.destroy(s);
             },
+            .@"return" => |s| {
+                self.allocator.destroy(s);
+            },
             .program => unreachable,
         }
     }
@@ -58,6 +61,9 @@ pub fn parseProgram(self: *Self) !*ast.Program {
                     self.allocator.destroy(s.name);
                     self.allocator.destroy(s);
                 },
+                .@"return" => |s| {
+                    self.allocator.destroy(s);
+                },
                 .program => unreachable,
             }
         }
@@ -79,6 +85,9 @@ fn parseStatement(self: *Self) !?ast.Statement {
     switch (self.cur_token.token_type) {
         .let => {
             return .{ .let = try self.parseLetStatement() orelse return null };
+        },
+        .@"return" => {
+            return .{ .@"return" = try self.parseReturnStatement() orelse return null };
         },
         else => {
             return null;
@@ -109,6 +118,19 @@ fn parseLetStatement(self: *Self) !?*ast.LetStatement {
         self.allocator.destroy(stmt); // !!
         return null;
     }
+
+    while (!self.curTokenIs(.semicolon)) {
+        self.nextToken();
+    }
+
+    return stmt;
+}
+
+fn parseReturnStatement(self: *Self) !?*ast.ReturnStatement {
+    var stmt = try self.allocator.create(ast.ReturnStatement);
+    errdefer self.allocator.destroy(stmt);
+
+    stmt.token = self.cur_token;
 
     while (!self.curTokenIs(.semicolon)) {
         self.nextToken();
@@ -154,7 +176,7 @@ fn checkParserErrors(parser: *Self) !void {
     }
 }
 
-test {
+test "let" {
     var lexer = Lexer.init(
         \\let x = 5;
         \\let y = 10;
@@ -167,11 +189,26 @@ test {
     defer parser.deinit(program);
 
     try checkParserErrors(&parser);
-    try std.testing.expectEqual(program.statements.len, 3);
+    try std.testing.expectEqual(3, program.statements.len);
 
     const expectedIdents = [_][]const u8{ "x", "y", "foobar" };
     for (expectedIdents, 0..) |ident, i| {
         const stmt = program.statements[i];
         try testLetStatement(stmt.let, ident);
     }
+}
+
+test "return" {
+    var lexer = Lexer.init(
+        \\return 5;
+        \\return 10;
+    );
+
+    var parser = init(std.testing.allocator, &lexer);
+
+    const program = try (&parser).parseProgram();
+    defer parser.deinit(program);
+
+    try checkParserErrors(&parser);
+    try std.testing.expectEqual(2, program.statements.len);
 }

@@ -7,11 +7,13 @@ pub const Expression = union(enum) {};
 pub const Statement = union(enum) {
     program: *Program,
     let: *LetStatement,
+    @"return": *ReturnStatement,
 
     pub fn node(self: Statement) Node {
         return switch (self) {
             .program => |s| s.node(),
             .let => |s| s.node(),
+            .@"return" => |s| s.node(),
         };
     }
 };
@@ -84,6 +86,19 @@ pub const Identifier = struct {
     }
 
     pub fn tokenLit(self: *Identifier) []const u8 {
+        return self.token.literal;
+    }
+};
+
+pub const ReturnStatement = struct {
+    token: Token,
+    value: Expression,
+
+    fn node(self: *ReturnStatement) Node {
+        return Node.init(self);
+    }
+
+    pub fn tokenLit(self: *ReturnStatement) []const u8 {
         return self.token.literal;
     }
 };
