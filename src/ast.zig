@@ -1,6 +1,8 @@
 const std = @import("std");
 const assert = std.debug.assert;
 const Token = @import("Token.zig");
+const Allocator = std.mem.Allocator;
+const fmt = std.fmt;
 
 pub const Expression = union(enum) {};
 
@@ -23,6 +25,7 @@ pub const Node = struct {
 
     ptr: *anyopaque,
     tokenLitFn: *const fn (*anyopaque) []const u8,
+    toStringFn: *const fn (*anyopaque, Allocator) anyerror![]const u8,
 
     pub fn init(pointer: anytype) Self {
         const Ptr = @TypeOf(pointer);
@@ -35,16 +38,26 @@ pub const Node = struct {
                 const self: Ptr = @ptrCast(@alignCast(ptr));
                 return @call(.always_inline, @typeInfo(Ptr).Pointer.child.tokenLit, .{self});
             }
+
+            pub fn toString(ptr: *anyopaque, allocator: Allocator) ![]const u8 {
+                const self: Ptr = @ptrCast(@alignCast(ptr));
+                return @call(.always_inline, @typeInfo(Ptr).Pointer.child.toString, .{ self, allocator });
+            }
         };
 
         return .{
             .ptr = pointer,
             .tokenLitFn = gen.tokenLit,
+            .toStringFn = gen.toString,
         };
     }
 
     pub inline fn tokenLit(self: Self) []const u8 {
         return self.tokenLitFn(self.ptr);
+    }
+
+    pub inline fn toString(self: Self, allocator: Allocator) ![]const u8 {
+        return try self.toStringFn(self.ptr, allocator);
     }
 };
 
@@ -53,6 +66,16 @@ pub const Program = struct {
 
     fn node(self: *Program) Node {
         return Node.init(self);
+    }
+
+    fn toString(self: *Program, allocator: Allocator) ![]const u8 {
+        var str_buf = std.ArrayList(u8).init(allocator);
+        for (self.statements) |stmt| {
+            const str = try stmt.node().toString(allocator);
+            try str_buf.appendSlice(str);
+            allocator.free(str);
+        }
+        return try str_buf.toOwnedSlice();
     }
 
     pub fn tokenLit(self: *Program) []const u8 {
@@ -72,6 +95,10 @@ pub const LetStatement = struct {
         return Node.init(self);
     }
 
+    fn toString(self: *LetStatement, allocator: Allocator) ![]const u8 {
+        return try fmt.allocPrint(allocator, "{s} {s} = {s};", .{ self.tokenLit(), self.name.tokenLit(), "TKTK" });
+    }
+
     pub fn tokenLit(self: *LetStatement) []const u8 {
         return self.token.literal;
     }
@@ -85,6 +112,10 @@ pub const Identifier = struct {
         return Node.init(self);
     }
 
+    fn toString(self: *Identifier, allocator: Allocator) ![]const u8 {
+        return try fmt.allocPrint(allocator, "{s}", .{self.tokenLit()});
+    }
+
     pub fn tokenLit(self: *Identifier) []const u8 {
         return self.token.literal;
     }
@@ -96,6 +127,11 @@ pub const ReturnStatement = struct {
 
     fn node(self: *ReturnStatement) Node {
         return Node.init(self);
+    }
+
+    fn toString(self: *ReturnStatement, allocator: Allocator) ![]const u8 {
+        _ = self; // autofix
+        return try fmt.allocPrint(allocator, "return {s};", .{"TKTK"});
     }
 
     pub fn tokenLit(self: *ReturnStatement) []const u8 {
@@ -112,5 +148,27 @@ test {
     var letStmt = LetStatement{ .token = tokLet, .name = &ident, .value = undefined };
     var stmts = [_]Statement{.{ .let = &letStmt }};
     var prog = Program{ .statements = &stmts };
-    try std.testing.expectEqualStrings((&prog).tokenLit(), "let");
+    try std.testing.expectEqualStrings("let", (&prog).tokenLit());
+}
+
+test "toString" {
+    var name: Identifier = .{
+        .token = .{ .token_type = .ident, .literal = "foo" },
+        .value = "foo",
+    };
+    var let: LetStatement = .{
+        .token = .{ .token_type = .let, .literal = "let" },
+        .name = &name,
+        .value = undefined,
+    };
+    var statements = [_]Statement{.{ .let = &let }};
+    var prog: Program = .{
+        .statements = &statements,
+    };
+    const str = try (&prog).toString(std.testing.allocator);
+    defer std.testing.allocator.free(str);
+    try std.testing.expectEqualStrings(
+        "let foo = TKTK;",
+        str,
+    );
 }
