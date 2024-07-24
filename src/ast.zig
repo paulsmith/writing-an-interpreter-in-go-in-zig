@@ -10,12 +10,14 @@ pub const Statement = union(enum) {
     program: *Program,
     let: *LetStatement,
     @"return": *ReturnStatement,
+    expr: *ExpressionStatement,
 
     pub fn node(self: Statement) Node {
         return switch (self) {
             .program => |s| s.node(),
             .let => |s| s.node(),
             .@"return" => |s| s.node(),
+            .expr => |s| s.node(),
         };
     }
 };
@@ -113,7 +115,7 @@ pub const Identifier = struct {
     }
 
     fn toString(self: *Identifier, allocator: Allocator) ![]const u8 {
-        return try fmt.allocPrint(allocator, "{s}", .{self.tokenLit()});
+        return try fmt.allocPrint(allocator, "{s}", .{self.value});
     }
 
     pub fn tokenLit(self: *Identifier) []const u8 {
@@ -139,7 +141,25 @@ pub const ReturnStatement = struct {
     }
 };
 
-test {
+const ExpressionStatement = struct {
+    token: Token,
+    expr: Expression,
+
+    fn node(self: *ExpressionStatement) Node {
+        return Node.init(self);
+    }
+
+    fn toString(self: *ExpressionStatement, allocator: Allocator) ![]const u8 {
+        _ = self; // autofix
+        return try fmt.allocPrint(allocator, "{s};", .{"TKTK"});
+    }
+
+    pub fn tokenLit(self: *ExpressionStatement) []const u8 {
+        return self.token.literal;
+    }
+};
+
+test "tokenLit" {
     const Lexer = @import("Lexer.zig");
     var lexer = Lexer.init("let foo = 5;");
     const tokLet = lexer.next();

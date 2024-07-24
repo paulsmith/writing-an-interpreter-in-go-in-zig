@@ -36,6 +36,9 @@ pub fn deinit(self: *Self, program: *ast.Program) void {
             .@"return" => |s| {
                 self.allocator.destroy(s);
             },
+            .expr => |s| {
+                self.allocator.destroy(s);
+            },
             .program => unreachable,
         }
     }
@@ -65,6 +68,9 @@ pub fn parseProgram(self: *Self) !*ast.Program {
                     self.allocator.destroy(s);
                 },
                 .program => unreachable,
+                .expr => |s| {
+                    self.allocator.destroy(s);
+                },
             }
         }
         statements.deinit();
