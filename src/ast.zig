@@ -4,7 +4,9 @@ const Token = @import("Token.zig");
 const Allocator = std.mem.Allocator;
 const fmt = std.fmt;
 
-pub const Expression = union(enum) {};
+pub const Expression = union(enum) {
+    ident: *Identifier,
+};
 
 pub const Statement = union(enum) {
     program: *Program,
@@ -141,7 +143,7 @@ pub const ReturnStatement = struct {
     }
 };
 
-const ExpressionStatement = struct {
+pub const ExpressionStatement = struct {
     token: Token,
     expr: Expression,
 

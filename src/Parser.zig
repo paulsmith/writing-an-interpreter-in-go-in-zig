@@ -5,19 +5,35 @@ const Token = @import("Token.zig");
 const ast = @import("ast.zig");
 const assert = std.debug.assert;
 
+const PrefixParseFn = *const fn (*Self) anyerror!ast.Expression;
+const InfixParseFn = *const fn (*Self, ast.Expression) anyerror!ast.Expression;
+const PrefixParseFnMap = std.AutoHashMap(Token.Type, PrefixParseFn);
+const InfixParseFnMap = std.AutoHashMap(Token.Type, InfixParseFn);
+
 allocator: Allocator,
 lexer: *Lexer,
 cur_token: Token = undefined,
 peek_token: Token = undefined,
 error_list: [1024]u8 = undefined,
 error_list_ptr: usize = 0,
+prefixParseFns: PrefixParseFnMap,
+infixParseFns: InfixParseFnMap,
 
 const Self = @This();
 
 pub fn init(allocator: Allocator, lexer: *Lexer) Self {
-    var parser = Self{ .allocator = allocator, .lexer = lexer };
+    var parser = Self{
+        .allocator = allocator,
+        .lexer = lexer,
+        .prefixParseFns = PrefixParseFnMap.init(allocator),
+        .infixParseFns = InfixParseFnMap.init(allocator),
+    };
+
+    parser.registerPrefix(.ident, parseIdentifier) catch unreachable;
+
     (&parser).nextToken();
     (&parser).nextToken();
+
     return parser;
 }
 
@@ -37,6 +53,11 @@ pub fn deinit(self: *Self, program: *ast.Program) void {
                 self.allocator.destroy(s);
             },
             .expr => |s| {
+                switch (s.expr) {
+                    .ident => |e| {
+                        self.allocator.destroy(e);
+                    },
+                }
                 self.allocator.destroy(s);
             },
             .program => unreachable,
@@ -44,6 +65,16 @@ pub fn deinit(self: *Self, program: *ast.Program) void {
     }
     self.allocator.free(program.statements);
     self.allocator.destroy(program);
+    self.prefixParseFns.deinit();
+    self.infixParseFns.deinit();
+}
+
+fn registerPrefix(self: *Self, token_type: Token.Type, parse_fn: PrefixParseFn) !void {
+    try self.prefixParseFns.put(token_type, parse_fn);
+}
+
+fn registerInfix(self: *Self, token_type: Token.Type, parse_fn: InfixParseFn) !void {
+    try self.infixParseFns.put(token_type, parse_fn);
 }
 
 fn fmtError(self: *Self, comptime fmt: []const u8, args: anytype) void {
@@ -96,7 +127,7 @@ fn parseStatement(self: *Self) !?ast.Statement {
             return .{ .@"return" = try self.parseReturnStatement() orelse return null };
         },
         else => {
-            return null;
+            return .{ .expr = try self.parseExpressionStatement() orelse return null };
         },
     }
 }
@@ -143,6 +174,47 @@ fn parseReturnStatement(self: *Self) !?*ast.ReturnStatement {
     }
 
     return stmt;
+}
+
+fn parseExpressionStatement(self: *Self) !?*ast.ExpressionStatement {
+    const stmt = try self.allocator.create(ast.ExpressionStatement);
+    errdefer self.allocator.destroy(stmt);
+
+    stmt.* = .{
+        .token = self.cur_token,
+        .expr = try self.parseExpression(.lowest) orelse return null,
+    };
+
+    if (self.peekTokenIs(.semicolon)) {
+        self.nextToken();
+    }
+
+    return stmt;
+}
+
+const Precedence = enum(u3) {
+    lowest,
+    equals, // ==
+    lessgreater, // < or >
+    sum, // +
+    product, // *
+    prefix, // -X or !X
+    call, // myFunc(X)
+};
+
+fn parseExpression(self: *Self, prec: Precedence) !?ast.Expression {
+    _ = prec; // autofix
+    if (self.prefixParseFns.get(self.cur_token.token_type)) |prefix| {
+        const left_expr = try prefix(self);
+        return left_expr;
+    }
+    return null;
+}
+
+fn parseIdentifier(self: *Self) !ast.Expression {
+    const ident = try self.allocator.create(ast.Identifier);
+    ident.* = .{ .token = self.cur_token, .value = self.cur_token.literal };
+    return .{ .ident = ident };
 }
 
 fn curTokenIs(self: *Self, t: Token.Type) bool {
@@ -217,4 +289,23 @@ test "return" {
 
     try checkParserErrors(&parser);
     try std.testing.expectEqual(2, program.statements.len);
+}
+
+test "identifier expression" {
+    const input = "foobar;";
+    var lexer = Lexer.init(input);
+
+    var parser = init(std.testing.allocator, &lexer);
+
+    const program = try (&parser).parseProgram();
+    defer parser.deinit(program);
+
+    try checkParserErrors(&parser);
+    try std.testing.expectEqual(1, program.statements.len);
+
+    const stmt = program.statements[0];
+    try std.testing.expect(stmt == .expr);
+    try std.testing.expect(stmt.expr.expr == .ident);
+    try std.testing.expectEqualStrings("foobar", stmt.expr.expr.ident.value);
+    try std.testing.expectEqualStrings("foobar", stmt.expr.expr.ident.tokenLit());
 }
