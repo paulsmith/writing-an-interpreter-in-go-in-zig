@@ -14,6 +14,7 @@ allocator: Allocator,
 lexer: *Lexer,
 cur_token: Token = undefined,
 peek_token: Token = undefined,
+errors: std.ArrayList([]const u8),
 error_list: [1024]u8 = undefined,
 error_list_ptr: usize = 0,
 prefixParseFns: PrefixParseFnMap,
@@ -25,6 +26,7 @@ pub fn init(allocator: Allocator, lexer: *Lexer) Self {
     var parser = Self{
         .allocator = allocator,
         .lexer = lexer,
+        .errors = std.ArrayList([]const u8).init(allocator),
         .prefixParseFns = PrefixParseFnMap.init(allocator),
         .infixParseFns = InfixParseFnMap.init(allocator),
     };
@@ -36,11 +38,6 @@ pub fn init(allocator: Allocator, lexer: *Lexer) Self {
     (&parser).nextToken();
 
     return parser;
-}
-
-pub fn nextToken(self: *Self) void {
-    self.cur_token = self.peek_token;
-    self.peek_token = self.lexer.next();
 }
 
 pub fn deinit(self: *Self, program: *ast.Program) void {
@@ -69,8 +66,17 @@ pub fn deinit(self: *Self, program: *ast.Program) void {
     }
     self.allocator.free(program.statements);
     self.allocator.destroy(program);
+    for (self.errors.items) |error_str| {
+        self.allocator.free(error_str);
+    }
+    self.errors.deinit();
     self.prefixParseFns.deinit();
     self.infixParseFns.deinit();
+}
+
+pub fn nextToken(self: *Self) void {
+    self.cur_token = self.peek_token;
+    self.peek_token = self.lexer.next();
 }
 
 fn registerPrefix(self: *Self, token_type: Token.Type, parse_fn: PrefixParseFn) !void {
@@ -82,9 +88,8 @@ fn registerInfix(self: *Self, token_type: Token.Type, parse_fn: InfixParseFn) !v
 }
 
 fn fmtError(self: *Self, comptime fmt: []const u8, args: anytype) void {
-    assert(self.error_list_ptr < 1024);
-    const result = std.fmt.bufPrint(self.error_list[self.error_list_ptr..], fmt ++ "\n", args) catch unreachable;
-    self.error_list_ptr += result.len;
+    const error_str = std.fmt.allocPrint(self.allocator, fmt, args) catch unreachable;
+    self.errors.append(error_str) catch unreachable;
 }
 
 pub fn parseProgram(self: *Self) !*ast.Program {
@@ -245,7 +250,7 @@ fn expectPeek(self: *Self, t: Token.Type) bool {
 }
 
 pub fn hasErrors(self: *Self) bool {
-    return self.error_list_ptr > 0;
+    return self.errors.items.len > 0;
 }
 
 pub fn peekError(self: *Self, expected: Token.Type) void {
