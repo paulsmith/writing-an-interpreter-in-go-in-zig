@@ -7,6 +7,7 @@ const fmt = std.fmt;
 pub const Expression = union(enum) {
     ident: *Identifier,
     int: *IntegerLiteral,
+    prefix: *PrefixExpression,
 };
 
 pub const Statement = union(enum) {
@@ -175,6 +176,45 @@ pub const ExpressionStatement = struct {
     }
 
     pub fn tokenLit(self: *ExpressionStatement) []const u8 {
+        return self.token.literal;
+    }
+};
+
+pub const Operator = enum {
+    minus,
+    bang,
+
+    fn toString(op: @This()) []const u8 {
+        return switch (op) {
+            .minus => "-",
+            .bang => "!",
+        };
+    }
+
+    pub fn fromString(s: []const u8) !Operator {
+        if (std.mem.eql(u8, s, "-")) {
+            return .minus;
+        } else if (std.mem.eql(u8, s, "!")) {
+            return .bang;
+        }
+        return error.NoSuchOperator;
+    }
+};
+
+pub const PrefixExpression = struct {
+    token: Token,
+    op: Operator,
+    right: Expression,
+
+    fn node(self: *PrefixExpression) Node {
+        return Node.init(self);
+    }
+
+    fn toString(self: *PrefixExpression) ![]const u8 {
+        return try std.fmt.allocPrint("({s}{})", .{ self.op.toString(), self.right.toString(self.allocator) });
+    }
+
+    fn tokenLit(self: *PrefixExpression) []const u8 {
         return self.token.literal;
     }
 };

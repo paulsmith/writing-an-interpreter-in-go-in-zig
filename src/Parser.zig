@@ -15,8 +15,6 @@ lexer: *Lexer,
 cur_token: Token = undefined,
 peek_token: Token = undefined,
 errors: std.ArrayList([]const u8),
-error_list: [1024]u8 = undefined,
-error_list_ptr: usize = 0,
 prefixParseFns: PrefixParseFnMap,
 infixParseFns: InfixParseFnMap,
 
@@ -33,11 +31,28 @@ pub fn init(allocator: Allocator, lexer: *Lexer) Self {
 
     parser.registerPrefix(.ident, parseIdentifier) catch unreachable;
     parser.registerPrefix(.int, parseIntegerLiteral) catch unreachable;
+    parser.registerPrefix(.bang, parsePrefixExpression) catch unreachable;
+    parser.registerPrefix(.minus, parsePrefixExpression) catch unreachable;
 
     (&parser).nextToken();
     (&parser).nextToken();
 
     return parser;
+}
+
+fn destroyExpr(allocator: Allocator, expr: ast.Expression) void {
+    switch (expr) {
+        .ident => |e| {
+            allocator.destroy(e);
+        },
+        .int => |e| {
+            allocator.destroy(e);
+        },
+        .prefix => |e| {
+            destroyExpr(allocator, e.right);
+            allocator.destroy(e);
+        },
+    }
 }
 
 pub fn deinit(self: *Self, program: *ast.Program) void {
@@ -51,14 +66,7 @@ pub fn deinit(self: *Self, program: *ast.Program) void {
                 self.allocator.destroy(s);
             },
             .expr => |s| {
-                switch (s.expr) {
-                    .ident => |e| {
-                        self.allocator.destroy(e);
-                    },
-                    .int => |e| {
-                        self.allocator.destroy(e);
-                    },
-                }
+                destroyExpr(self.allocator, s.expr);
                 self.allocator.destroy(s);
             },
             .program => unreachable,
@@ -189,9 +197,10 @@ fn parseExpressionStatement(self: *Self) !?*ast.ExpressionStatement {
     const stmt = try self.allocator.create(ast.ExpressionStatement);
     errdefer self.allocator.destroy(stmt);
 
+    const expr = try self.parseExpression(.lowest);
     stmt.* = .{
         .token = self.cur_token,
-        .expr = try self.parseExpression(.lowest) orelse return null,
+        .expr = expr,
     };
 
     if (self.peekTokenIs(.semicolon)) {
@@ -211,13 +220,15 @@ const Precedence = enum(u3) {
     call, // myFunc(X)
 };
 
-fn parseExpression(self: *Self, prec: Precedence) !?ast.Expression {
+fn parseExpression(self: *Self, prec: Precedence) !ast.Expression {
     _ = prec; // autofix
     if (self.prefixParseFns.get(self.cur_token.token_type)) |prefix| {
         const left_expr = try prefix(self);
         return left_expr;
+    } else {
+        self.fmtError("no prefix parse function for token type {s}", .{self.cur_token.token_type.name()});
+        return error.PrefixParseFnNotFound;
     }
-    return null;
 }
 
 fn parseIdentifier(self: *Self) !ast.Expression {
@@ -230,6 +241,19 @@ fn parseIntegerLiteral(self: *Self) !ast.Expression {
     const int_lit = try self.allocator.create(ast.IntegerLiteral);
     int_lit.* = .{ .token = self.cur_token, .value = try std.fmt.parseInt(i64, self.cur_token.literal, 10) };
     return .{ .int = int_lit };
+}
+
+fn parsePrefixExpression(self: *Self) !ast.Expression {
+    const expr = try self.allocator.create(ast.PrefixExpression);
+    errdefer self.allocator.destroy(expr);
+    expr.* = .{
+        .token = self.cur_token,
+        .op = try ast.Operator.fromString(self.cur_token.literal),
+        .right = undefined,
+    };
+    self.nextToken();
+    expr.right = try self.parseExpression(.prefix);
+    return .{ .prefix = expr };
 }
 
 fn curTokenIs(self: *Self, t: Token.Type) bool {
@@ -264,7 +288,9 @@ fn testLetStatement(stmt: *ast.LetStatement, name: []const u8) !void {
 
 fn checkParserErrors(parser: *Self) !void {
     if (parser.hasErrors()) {
-        std.debug.print("error(s):\n{s}\n", .{parser.error_list});
+        for (parser.errors.items) |error_str| {
+            std.debug.print("\x1b[41merror: {s}\x1b[0m\n", .{error_str});
+        }
         try std.testing.expect(false);
     }
 }
@@ -342,4 +368,29 @@ test "integer literal expression" {
     try std.testing.expect(stmt.expr.expr == .int);
     try std.testing.expectEqual(5, stmt.expr.expr.int.value);
     try std.testing.expectEqualStrings("5", stmt.expr.expr.int.tokenLit());
+}
+
+test "prefix expression" {
+    const test_cases = [_]struct { input: []const u8, op: ast.Operator, value: i64 }{
+        .{ .input = "!5;", .op = .bang, .value = 5 },
+        .{ .input = "-15;", .op = .minus, .value = 15 },
+    };
+
+    for (test_cases) |case| {
+        var lexer = Lexer.init(case.input);
+        var parser = init(std.testing.allocator, &lexer);
+
+        const program = try (&parser).parseProgram();
+        defer parser.deinit(program);
+
+        try checkParserErrors(&parser);
+        try std.testing.expectEqual(1, program.statements.len);
+
+        const stmt = program.statements[0];
+        try std.testing.expect(stmt == .expr);
+        try std.testing.expect(stmt.expr.expr == .prefix);
+        try std.testing.expectEqual(case.op, stmt.expr.expr.prefix.op);
+        try std.testing.expect(stmt.expr.expr.prefix.right == .int);
+        try std.testing.expectEqual(case.value, stmt.expr.expr.prefix.right.int.value);
+    }
 }
