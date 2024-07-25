@@ -6,6 +6,7 @@ const fmt = std.fmt;
 
 pub const Expression = union(enum) {
     ident: *Identifier,
+    int: *IntegerLiteral,
 };
 
 pub const Statement = union(enum) {
@@ -121,6 +122,23 @@ pub const Identifier = struct {
     }
 
     pub fn tokenLit(self: *Identifier) []const u8 {
+        return self.token.literal;
+    }
+};
+
+pub const IntegerLiteral = struct {
+    token: Token,
+    value: i64,
+
+    fn node(self: IntegerLiteral) Node {
+        return Node.init(self);
+    }
+
+    fn toString(self: *IntegerLiteral, allocator: Allocator) ![]const u8 {
+        return try fmt.allocPrint(allocator, "{}", .{self.value});
+    }
+
+    pub fn tokenLit(self: *IntegerLiteral) []const u8 {
         return self.token.literal;
     }
 };

@@ -30,6 +30,7 @@ pub fn init(allocator: Allocator, lexer: *Lexer) Self {
     };
 
     parser.registerPrefix(.ident, parseIdentifier) catch unreachable;
+    parser.registerPrefix(.int, parseIntegerLiteral) catch unreachable;
 
     (&parser).nextToken();
     (&parser).nextToken();
@@ -55,6 +56,9 @@ pub fn deinit(self: *Self, program: *ast.Program) void {
             .expr => |s| {
                 switch (s.expr) {
                     .ident => |e| {
+                        self.allocator.destroy(e);
+                    },
+                    .int => |e| {
                         self.allocator.destroy(e);
                     },
                 }
@@ -217,6 +221,12 @@ fn parseIdentifier(self: *Self) !ast.Expression {
     return .{ .ident = ident };
 }
 
+fn parseIntegerLiteral(self: *Self) !ast.Expression {
+    const int_lit = try self.allocator.create(ast.IntegerLiteral);
+    int_lit.* = .{ .token = self.cur_token, .value = try std.fmt.parseInt(i64, self.cur_token.literal, 10) };
+    return .{ .int = int_lit };
+}
+
 fn curTokenIs(self: *Self, t: Token.Type) bool {
     return self.cur_token.token_type == t;
 }
@@ -308,4 +318,23 @@ test "identifier expression" {
     try std.testing.expect(stmt.expr.expr == .ident);
     try std.testing.expectEqualStrings("foobar", stmt.expr.expr.ident.value);
     try std.testing.expectEqualStrings("foobar", stmt.expr.expr.ident.tokenLit());
+}
+
+test "integer literal expression" {
+    const input = "5;";
+    var lexer = Lexer.init(input);
+
+    var parser = init(std.testing.allocator, &lexer);
+
+    const program = try (&parser).parseProgram();
+    defer parser.deinit(program);
+
+    try checkParserErrors(&parser);
+    try std.testing.expectEqual(1, program.statements.len);
+
+    const stmt = program.statements[0];
+    try std.testing.expect(stmt == .expr);
+    try std.testing.expect(stmt.expr.expr == .int);
+    try std.testing.expectEqual(5, stmt.expr.expr.int.value);
+    try std.testing.expectEqualStrings("5", stmt.expr.expr.int.tokenLit());
 }
