@@ -8,6 +8,7 @@ pub const Expression = union(enum) {
     ident: *Identifier,
     int: *IntegerLiteral,
     prefix: *PrefixExpression,
+    infix: *InfixExpression,
 };
 
 pub const Statement = union(enum) {
@@ -183,11 +184,25 @@ pub const ExpressionStatement = struct {
 pub const Operator = enum {
     minus,
     bang,
+    plus,
+    mul,
+    div,
+    lt,
+    gt,
+    eq,
+    ne,
 
     fn toString(op: @This()) []const u8 {
         return switch (op) {
             .minus => "-",
             .bang => "!",
+            .plus => "+",
+            .mul => "*",
+            .div => "/",
+            .lt => "<",
+            .gt => ">",
+            .eq => "==",
+            .ne => "!=",
         };
     }
 
@@ -196,6 +211,20 @@ pub const Operator = enum {
             return .minus;
         } else if (std.mem.eql(u8, s, "!")) {
             return .bang;
+        } else if (std.mem.eql(u8, s, "+")) {
+            return .plus;
+        } else if (std.mem.eql(u8, s, "*")) {
+            return .mul;
+        } else if (std.mem.eql(u8, s, "/")) {
+            return .div;
+        } else if (std.mem.eql(u8, s, "<")) {
+            return .lt;
+        } else if (std.mem.eql(u8, s, ">")) {
+            return .gt;
+        } else if (std.mem.eql(u8, s, "==")) {
+            return .eq;
+        } else if (std.mem.eql(u8, s, "!=")) {
+            return .ne;
         }
         return error.NoSuchOperator;
     }
@@ -215,6 +244,25 @@ pub const PrefixExpression = struct {
     }
 
     fn tokenLit(self: *PrefixExpression) []const u8 {
+        return self.token.literal;
+    }
+};
+
+pub const InfixExpression = struct {
+    token: Token,
+    op: Operator,
+    left: Expression,
+    right: Expression,
+
+    fn node(self: *InfixExpression) Node {
+        return Node.init(self);
+    }
+
+    fn toString(self: *InfixExpression) ![]const u8 {
+        return try std.fmt.allocPrint("({s} {s} {s})", .{ self.left.toString(self.allocator), self.op.toString(), self.right.toString(self.allocator) });
+    }
+
+    fn tokenLit(self: *InfixExpression) []const u8 {
         return self.token.literal;
     }
 };
