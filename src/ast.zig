@@ -9,6 +9,15 @@ pub const Expression = union(enum) {
     int: *IntegerLiteral,
     prefix: *PrefixExpression,
     infix: *InfixExpression,
+
+    fn node(self: @This()) Node {
+        return switch (self) {
+            .ident => |e| e.node(),
+            .int => |e| e.node(),
+            .prefix => |e| e.node(),
+            .infix => |e| e.node(),
+        };
+    }
 };
 
 pub const Statement = union(enum) {
@@ -75,7 +84,7 @@ pub const Program = struct {
         return Node.init(self);
     }
 
-    fn toString(self: *Program, allocator: Allocator) ![]const u8 {
+    pub fn toString(self: *Program, allocator: Allocator) ![]const u8 {
         var str_buf = std.ArrayList(u8).init(allocator);
         for (self.statements) |stmt| {
             const str = try stmt.node().toString(allocator);
@@ -103,7 +112,9 @@ pub const LetStatement = struct {
     }
 
     fn toString(self: *LetStatement, allocator: Allocator) ![]const u8 {
-        return try fmt.allocPrint(allocator, "{s} {s} = {s};", .{ self.tokenLit(), self.name.tokenLit(), "TKTK" });
+        const value_str = try self.value.node().toString(allocator);
+        defer allocator.free(value_str);
+        return try fmt.allocPrint(allocator, "{s} {s} = {s};", .{ self.tokenLit(), self.name.tokenLit(), value_str });
     }
 
     pub fn tokenLit(self: *LetStatement) []const u8 {
@@ -115,7 +126,7 @@ pub const Identifier = struct {
     token: Token,
     value: []const u8,
 
-    fn node(self: Identifier) Node {
+    fn node(self: *Identifier) Node {
         return Node.init(self);
     }
 
@@ -132,7 +143,7 @@ pub const IntegerLiteral = struct {
     token: Token,
     value: i64,
 
-    fn node(self: IntegerLiteral) Node {
+    fn node(self: *IntegerLiteral) Node {
         return Node.init(self);
     }
 
@@ -154,8 +165,9 @@ pub const ReturnStatement = struct {
     }
 
     fn toString(self: *ReturnStatement, allocator: Allocator) ![]const u8 {
-        _ = self; // autofix
-        return try fmt.allocPrint(allocator, "return {s};", .{"TKTK"});
+        const value_str = try self.value.node().toString(allocator);
+        defer allocator.free(value_str);
+        return try fmt.allocPrint(allocator, "return {s};", .{value_str});
     }
 
     pub fn tokenLit(self: *ReturnStatement) []const u8 {
@@ -172,8 +184,8 @@ pub const ExpressionStatement = struct {
     }
 
     fn toString(self: *ExpressionStatement, allocator: Allocator) ![]const u8 {
-        _ = self; // autofix
-        return try fmt.allocPrint(allocator, "{s};", .{"TKTK"});
+        const expr_str = try self.expr.node().toString(allocator);
+        return expr_str;
     }
 
     pub fn tokenLit(self: *ExpressionStatement) []const u8 {
@@ -239,8 +251,10 @@ pub const PrefixExpression = struct {
         return Node.init(self);
     }
 
-    fn toString(self: *PrefixExpression) ![]const u8 {
-        return try std.fmt.allocPrint("({s}{})", .{ self.op.toString(), self.right.toString(self.allocator) });
+    fn toString(self: *PrefixExpression, allocator: Allocator) ![]const u8 {
+        const right_str = try self.right.node().toString(allocator);
+        defer allocator.free(right_str);
+        return try std.fmt.allocPrint(allocator, "({s}{s})", .{ self.op.toString(), right_str });
     }
 
     fn tokenLit(self: *PrefixExpression) []const u8 {
@@ -258,8 +272,12 @@ pub const InfixExpression = struct {
         return Node.init(self);
     }
 
-    fn toString(self: *InfixExpression) ![]const u8 {
-        return try std.fmt.allocPrint("({s} {s} {s})", .{ self.left.toString(self.allocator), self.op.toString(), self.right.toString(self.allocator) });
+    fn toString(self: *InfixExpression, allocator: Allocator) ![]const u8 {
+        const right_str = try self.right.node().toString(allocator);
+        defer allocator.free(right_str);
+        const left_str = try self.left.node().toString(allocator);
+        defer allocator.free(left_str);
+        return try std.fmt.allocPrint(allocator, "({s} {s} {s})", .{ left_str, self.op.toString(), right_str });
     }
 
     fn tokenLit(self: *InfixExpression) []const u8 {
@@ -279,24 +297,54 @@ test "tokenLit" {
     try std.testing.expectEqualStrings("let", (&prog).tokenLit());
 }
 
-test "toString" {
-    var name: Identifier = .{
-        .token = .{ .token_type = .ident, .literal = "foo" },
-        .value = "foo",
-    };
-    var let: LetStatement = .{
-        .token = .{ .token_type = .let, .literal = "let" },
-        .name = &name,
-        .value = undefined,
-    };
-    var statements = [_]Statement{.{ .let = &let }};
-    var prog: Program = .{
-        .statements = &statements,
-    };
-    const str = try (&prog).toString(std.testing.allocator);
+const t = std.testing;
+
+fn testIdentifier(allocator: Allocator) !*Identifier {
+    const id = try allocator.create(Identifier);
+    id.* = .{ .token = .{ .token_type = .ident, .literal = "foo" }, .value = "foo" };
+    return id;
+}
+
+test "identifier to string" {
+    var id = try testIdentifier(t.allocator);
+    defer t.allocator.destroy(id);
+    const str = try id.toString(t.allocator);
+    defer t.allocator.free(str);
+    try t.expectEqualStrings("foo", str);
+}
+
+fn testLetStatement(allocator: Allocator) !*LetStatement {
+    const id = try testIdentifier(allocator);
+    const let = try allocator.create(LetStatement);
+    const value = try allocator.create(IntegerLiteral);
+    value.* = .{ .token = .{ .token_type = .int, .literal = "5" }, .value = 5 };
+    let.* = .{ .token = .{ .token_type = .let, .literal = "let" }, .name = id, .value = .{ .int = value } };
+    return let;
+}
+
+test "let statement to string" {
+    var let = try testLetStatement(t.allocator);
+    defer t.allocator.destroy(let);
+    defer t.allocator.destroy(let.value.int);
+    defer t.allocator.destroy(let.name);
+    const str = try let.toString(t.allocator);
+    defer t.allocator.free(str);
+    try t.expectEqualStrings("let foo = 5;", str);
+}
+
+test "program to string" {
+    var let = try testLetStatement(t.allocator);
+    defer t.allocator.destroy(let);
+    defer t.allocator.destroy(let.value.int);
+    defer t.allocator.destroy(let.name);
+    var statements = [_]Statement{.{ .let = let }};
+    var prog = try t.allocator.create(Program);
+    defer t.allocator.destroy(prog);
+    prog.statements = &statements;
+    const str = try let.toString(t.allocator);
     defer std.testing.allocator.free(str);
     try std.testing.expectEqualStrings(
-        "let foo = TKTK;",
+        "let foo = 5;",
         str,
     );
 }

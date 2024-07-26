@@ -85,7 +85,7 @@ fn skipWhitespace(self: *Self) void {
 
 fn readIdentifier(self: *Self) []const u8 {
     const p = self.position;
-    while (self.ch != null and ascii.isAlphabetic(self.ch.?) or self.ch.? == '_') {
+    while (self.ch != null and (ascii.isAlphabetic(self.ch.?) or self.ch.? == '_')) {
         self.readChar();
     }
     return self.input[p..self.position];

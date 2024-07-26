@@ -505,3 +505,33 @@ test "infix operators" {
         try std.testing.expectEqual(case.rval, stmt.expr.expr.infix.right.int.value);
     }
 }
+
+test "operator precedence" {
+    const test_cases = [_]struct { input: []const u8, want: []const u8 }{
+        .{ .input = "-a * b", .want = "((-a) * b)" },
+        .{ .input = "!-a", .want = "(!(-a))" },
+        .{ .input = "a + b + c", .want = "((a + b) + c)" },
+        .{ .input = "a * b * c", .want = "((a * b) * c)" },
+        .{ .input = "a * b / c", .want = "((a * b) / c)" },
+        .{ .input = "a + b / c", .want = "(a + (b / c))" },
+        .{ .input = "a + b * c + d / e - f", .want = "(((a + (b * c)) + (d / e)) - f)" },
+        .{ .input = "3 + 4; -5 * 5", .want = "(3 + 4)((-5) * 5)" },
+        .{ .input = "5 > 4 == 3 < 4", .want = "((5 > 4) == (3 < 4))" },
+        .{ .input = "5 < 4 != 3 > 4", .want = "((5 < 4) != (3 > 4))" },
+        .{ .input = "3 + 4 * 5 == 3 * 1 + 4 * 5", .want = "((3 + (4 * 5)) == ((3 * 1) + (4 * 5)))" },
+    };
+
+    for (test_cases) |case| {
+        var lexer = Lexer.init(case.input);
+        var parser = try init(std.testing.allocator, &lexer);
+
+        const program = try (&parser).parseProgram();
+        defer parser.deinit(program);
+
+        try checkParserErrors(&parser);
+
+        const got = try program.toString(std.testing.allocator);
+        defer std.testing.allocator.free(got);
+        try std.testing.expectEqualStrings(case.want, got);
+    }
+}
